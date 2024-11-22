@@ -23,9 +23,9 @@
 import glob
 import os
 import subprocess
-
-import subprocess
+import re
 import sys
+
 
 def install_torch():
     try:
@@ -115,13 +115,16 @@ def get_extensions():
     return ext_modules
 
 
-def parse_requirements(fname="requirements.txt", with_version=True):
-    """Parse the package dependencies listed in a requirements file but strips
+def parse_requirements(fname="requirements.txt", versions=False):
+    """
+    Parse the package dependencies listed in a requirements file but strips
     specific versioning information.
 
     Args:
         fname (str): path to requirements file
-        with_version (bool, default=False): if True include version specs
+        versions (bool | str):
+            If true include version specs.
+            If strict, then pin to the minimum version.
 
     Returns:
         List[str]: list of requirements items
@@ -129,65 +132,84 @@ def parse_requirements(fname="requirements.txt", with_version=True):
     CommandLine:
         python -c "import setup; print(setup.parse_requirements())"
     """
-    import re
-    import sys
-    from os.path import exists
-
     require_fpath = fname
 
-    def parse_line(line):
-        """Parse information from a line in a requirements text file."""
+    def parse_line(line, dpath=""):
+        """
+        Parse information from a line in a requirements text file
+        """
+        # Remove inline comments
+        comment_pos = line.find(" #")
+        if comment_pos > -1:
+            line = line[:comment_pos]
+
         if line.startswith("-r "):
             # Allow specifying requirements in other files
-            target = line.split(" ")[1]
+            target = os.path.join(dpath, line.split(" ")[1])
             for info in parse_require_file(target):
                 yield info
         else:
+            # See: https://www.python.org/dev/peps/pep-0508/
             info = {"line": line}
             if line.startswith("-e "):
                 info["package"] = line.split("#egg=")[1]
-            elif "@git+" in line:
-                info["package"] = line
             else:
+                if "--find-links" in line:
+                    # setuptools does not seem to handle find links
+                    line = line.split("--find-links")[0]
+                if ";" in line:
+                    pkgpart, platpart = line.split(";")
+                    # Handle platform specific dependencies
+                    # setuptools.readthedocs.io/en/latest/setuptools.html
+                    # #declaring-platform-specific-dependencies
+                    plat_deps = platpart.strip()
+                    info["platform_deps"] = plat_deps
+                else:
+                    pkgpart = line
+                    platpart = None
+
                 # Remove versioning from the package
                 pat = "(" + "|".join([">=", "==", ">"]) + ")"
-                parts = re.split(pat, line, maxsplit=1)
+                parts = re.split(pat, pkgpart, maxsplit=1)
                 parts = [p.strip() for p in parts]
 
                 info["package"] = parts[0]
                 if len(parts) > 1:
                     op, rest = parts[1:]
-                    if ";" in rest:
-                        # Handle platform specific dependencies
-                        # http://setuptools.readthedocs.io/en/latest/setuptools.html#declaring-platform-specific-dependencies
-                        version, platform_deps = map(str.strip, rest.split(";"))
-                        info["platform_deps"] = platform_deps
-                    else:
-                        version = rest  # NOQA
+                    version = rest  # NOQA
                     info["version"] = (op, version)
             yield info
 
     def parse_require_file(fpath):
+        dpath = os.path.dirname(fpath)
         with open(fpath, "r") as f:
             for line in f.readlines():
                 line = line.strip()
                 if line and not line.startswith("#"):
-                    for info in parse_line(line):
+                    for info in parse_line(line, dpath=dpath):
                         yield info
 
     def gen_packages_items():
-        if exists(require_fpath):
+        if os.path.exists(require_fpath):
             for info in parse_require_file(require_fpath):
                 parts = [info["package"]]
-                if with_version and "version" in info:
-                    parts.extend(info["version"])
+                if versions and "version" in info:
+                    if versions == "strict":
+                        # In strict mode, we pin to the minimum version
+                        if info["version"]:
+                            # Only replace the first >= instance
+                            verstr = "".join(info["version"]).replace(">=", "==", 1)
+                            parts.append(verstr)
+                    else:
+                        parts.extend(info["version"])
                 if not sys.version.startswith("3.4"):
                     # apparently package_deps are broken in 3.4
-                    platform_deps = info.get("platform_deps")
-                    if platform_deps is not None:
-                        parts.append(";" + platform_deps)
+                    plat_deps = info.get("platform_deps")
+                    if plat_deps is not None:
+                        parts.append(";" + plat_deps)
                 item = "".join(parts)
-                yield item
+                if item:
+                    yield item
 
     packages = list(gen_packages_items())
     return packages
@@ -208,7 +230,18 @@ if __name__ == "__main__":
         url="https://github.com/IDEA-Research/GroundingDINO",
         description="open-set object detector",
         license=license,
-        install_requires=parse_requirements("requirements.txt"),
+        # Note: does not include cv2 due to headless ambiguitiy.
+        install_requires=parse_requirements("requirements/runtime.txt", versions="loose"),
+        extras_require={
+            "all": parse_requirements("runtime.txt", versions="loose"),
+            # Use can choose which type of cv2 to install
+            "cv2": parse_requirements("requirements/cv2.txt", versions="loose"),
+            "cv2-headless": parse_requirements("requirements/cv2-headless.txt", versions="loose"),
+            # Strict variant of requirements
+            "runtime-strict": parse_requirements("requirements/runtime.txt", versions="strict"),
+            "cv2-strict": parse_requirements("requirements/cv2.txt", versions="strict"),
+            "cv2-headless-strict": parse_requirements("requirements/cv2-headless.txt", versions="strict"),
+        },
         packages=find_packages(
             exclude=(
                 "configs",
