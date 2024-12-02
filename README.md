@@ -68,7 +68,7 @@ PyTorch implementation and pretrained models for Grounding DINO. For details, se
 
 - **Open-Set Detection.** Detect **everything** with language!
 - **High Performance.** COCO zero-shot **52.5 AP** (training without COCO data!). COCO fine-tune **63.0 AP**.
-- **Flexible.** Collaboration with Stable Diffusion for Image Editting.
+- **Flexible.** Collaboration with Stable Diffusion for Image Editing.
 
 
 
@@ -102,7 +102,7 @@ Marrying <a href="https://github.com/IDEA-Research/GroundingDINO">Grounding DINO
 - We defaultly choose the boxes whose highest similarities are higher than a `box_threshold`.
 - We extract the words whose similarities are higher than the `text_threshold` as predicted labels.
 - If you want to obtain objects of specific phrases, like the `dogs` in the sentence `two dogs with a stick.`, you can select the boxes with highest text similarities with `dogs` as final outputs. 
-- Note that each word can be split to **more than one** tokens with different tokenlizers. The number of words in a sentence may not equal to the number of text tokens.
+- Note that each word can be split to **more than one** tokens with different tokenizers. The number of words in a sentence may not equal to the number of text tokens.
 - We suggest separating different category names with `.` for Grounding DINO.
 ![model_explain1](.asset/model_explan1.PNG)
 ![model_explain2](.asset/model_explan2.PNG)
