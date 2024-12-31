@@ -70,7 +70,7 @@ def preprocess_caption(caption: str) -> str:
 
 def export_onnx(model, output_dir):
     onnx_file = output_dir + "/" + "gdino.onnx"
-    caption = preprocess_caption("watermark")
+    caption = preprocess_caption(".")
     tokenized = model.tokenizer(caption, padding="longest", return_tensors="pt")
     box_threshold = torch.tensor(0.35, dtype=torch.float32)
     text_threshold = torch.tensor(0.25, dtype=torch.float32)
@@ -100,9 +100,9 @@ def export_onnx(model, output_dir):
     print("check model ok!")
 
 def inference(model):
-    image = cv2.imread('asset/cat_dog.jpeg')
+    image = cv2.imread('asset/1.jpg')
     processed_image = preprocess_image(image).unsqueeze(0)
-    caption = preprocess_caption("cat . dog")
+    caption = preprocess_caption("watermark")
     tokenized = model.tokenizer(caption, padding="longest", return_tensors="pt")
     box_threshold = torch.tensor(0.35, dtype=torch.float32)
     text_threshold = torch.tensor(0.25, dtype=torch.float32)
@@ -134,9 +134,9 @@ def inference_onnx(output_dir):
     onnx_file = output_dir + "/" + "gdino.onnx"
     session = ort.InferenceSession(onnx_file)
 
-    image = cv2.imread('asset/cat_dog.jpeg')
+    image = cv2.imread('asset/1.jpg')
     processed_image = preprocess_image(image).unsqueeze(0)
-    caption = preprocess_caption("dog.cat")
+    caption = preprocess_caption("watermark")
     tokenized = model.tokenizer(caption, padding="longest", return_tensors="pt")
     box_threshold = torch.tensor(0.35, dtype=torch.float32)
     text_threshold = torch.tensor(0.25, dtype=torch.float32)
