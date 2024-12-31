@@ -19,7 +19,7 @@ from typing import List
 
 import torch
 import torch.nn.functional as F
-from torch import nn
+from torch import nn, Tensor
 from torchvision.ops.boxes import nms
 from transformers import AutoTokenizer, BertModel, BertTokenizer, RobertaModel, RobertaTokenizerFast
 
@@ -224,7 +224,13 @@ class GroundingDINO(nn.Module):
     def init_ref_points(self, use_num_queries):
         self.refpoint_embed = nn.Embedding(use_num_queries, self.query_dim)
 
-    def forward(self, samples: NestedTensor, targets: List = None, **kw):
+#    def forward(self, samples: NestedTensor, targets: List = None, **kw):
+    def forward(self, 
+                samples: NestedTensor, 
+                input_ids: Tensor, 
+                attention_mask: Tensor, 
+                token_type_ids: Tensor, 
+                **kw):
         """The forward expects a NestedTensor, which consists of:
            - samples.tensor: batched images, of shape [batch_size x 3 x H x W]
            - samples.mask: a binary mask of shape [batch_size x H x W], containing 1 on padded pixels
@@ -239,6 +245,7 @@ class GroundingDINO(nn.Module):
            - "aux_outputs": Optional, only returned when auxilary losses are activated. It is a list of
                             dictionnaries containing the two above keys for each decoder layer.
         """
+        """
         if targets is None:
             captions = kw["captions"]
         else:
@@ -248,6 +255,13 @@ class GroundingDINO(nn.Module):
         tokenized = self.tokenizer(captions, padding="longest", return_tensors="pt").to(
             samples.device
         )
+        """
+        tokenized = {
+            "input_ids": input_ids,
+            "attention_mask": attention_mask,
+            "token_type_ids": token_type_ids,
+        }
+
         (
             text_self_attention_masks,
             position_ids,
@@ -277,7 +291,8 @@ class GroundingDINO(nn.Module):
         bert_output = self.bert(**tokenized_for_encoder)  # bs, 195, 768
 
         encoded_text = self.feat_map(bert_output["last_hidden_state"])  # bs, 195, d_model
-        text_token_mask = tokenized.attention_mask.bool()  # bs, 195
+        text_token_mask = tokenized["attention_mask"].bool()  # bs, 195
+#        text_token_mask = tokenizedattention_mask.bool()  # bs, 195
         # text_token_mask: True for nomask, False for mask
         # text_self_attention_masks: True for nomask, False for mask
 
