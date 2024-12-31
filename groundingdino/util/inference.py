@@ -64,8 +64,17 @@ def predict(
     model = model.to(device)
     image = image.to(device)
 
+    tokenizer = model.tokenizer
+    tokenized = tokenizer([caption], padding="longest", return_tensors="pt").to(
+        device
+    )
+
     with torch.no_grad():
-        outputs = model(image[None], captions=[caption])
+        outputs = model(image.unsqueeze(0), 
+                        input_ids=tokenized["input_ids"], 
+                        attention_mask=tokenized["attention_mask"], 
+                        token_type_ids=tokenized["token_type_ids"])
+#        outputs = model(image[None], captions=[caption])
 
     prediction_logits = outputs["pred_logits"].cpu().sigmoid()[0]  # prediction_logits.shape = (nq, 256)
     prediction_boxes = outputs["pred_boxes"].cpu()[0]  # prediction_boxes.shape = (nq, 4)
@@ -74,7 +83,7 @@ def predict(
     logits = prediction_logits[mask]  # logits.shape = (n, 256)
     boxes = prediction_boxes[mask]  # boxes.shape = (n, 4)
 
-    tokenizer = model.tokenizer
+#    tokenizer = model.tokenizer
     tokenized = tokenizer(caption)
     
     if remove_combined:
