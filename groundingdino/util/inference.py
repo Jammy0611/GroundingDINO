@@ -13,6 +13,7 @@ from groundingdino.models import build_model
 from groundingdino.util.misc import clean_state_dict
 from groundingdino.util.slconfig import SLConfig
 from groundingdino.util.utils import get_phrases_from_posmap
+from groundingdino.models.GroundingDINO.bertwarper import generate_masks_with_special_tokens_and_transfer_map
 
 # ----------------------------------------------------------------------------------------------------------------------
 # OLD API
@@ -69,11 +70,32 @@ def predict(
         device
     )
 
+    specical_tokens = model.specical_tokens
+    (
+        text_self_attention_masks,
+        position_ids,
+        _,
+    ) = generate_masks_with_special_tokens_and_transfer_map(
+        tokenized, specical_tokens, tokenizer
+    )
+
+    max_text_len = model.max_text_len
+    if text_self_attention_masks.shape[1] > max_text_len:
+        text_self_attention_masks = text_self_attention_masks[
+            :, : max_text_len, : max_text_len
+        ]
+        position_ids = position_ids[:, : max_text_len]
+        tokenized["input_ids"] = tokenized["input_ids"][:, : max_text_len]
+        tokenized["attention_mask"] = tokenized["attention_mask"][:, : max_text_len]
+        tokenized["token_type_ids"] = tokenized["token_type_ids"][:, : max_text_len]
+
     with torch.no_grad():
         outputs = model(image.unsqueeze(0), 
                         input_ids=tokenized["input_ids"], 
                         attention_mask=tokenized["attention_mask"], 
-                        token_type_ids=tokenized["token_type_ids"])
+                        token_type_ids=tokenized["token_type_ids"], 
+                        position_ids = position_ids, 
+                        text_self_attention_masks = text_self_attention_masks)
 #        outputs = model(image[None], captions=[caption])
 
     prediction_logits = outputs["pred_logits"].cpu().sigmoid()[0]  # prediction_logits.shape = (nq, 256)
