@@ -19,7 +19,7 @@ from typing import List
 
 import torch
 import torch.nn.functional as F
-from torch import nn
+from torch import nn, Tensor
 from torchvision.ops.boxes import nms
 from transformers import AutoTokenizer, BertModel, BertTokenizer, RobertaModel, RobertaTokenizerFast
 
@@ -224,7 +224,14 @@ class GroundingDINO(nn.Module):
     def init_ref_points(self, use_num_queries):
         self.refpoint_embed = nn.Embedding(use_num_queries, self.query_dim)
 
-    def forward(self, samples: NestedTensor, targets: List = None, **kw):
+#    def forward(self, samples: NestedTensor, targets: List = None, **kw):
+    def forward(self, 
+                samples: NestedTensor, 
+                last_hidden_state: Tensor, 
+                attention_mask: Tensor, 
+                position_ids: Tensor, 
+                text_self_attention_masks: Tensor, 
+                **kw):
         """The forward expects a NestedTensor, which consists of:
            - samples.tensor: batched images, of shape [batch_size x 3 x H x W]
            - samples.mask: a binary mask of shape [batch_size x H x W], containing 1 on padded pixels
@@ -239,6 +246,7 @@ class GroundingDINO(nn.Module):
            - "aux_outputs": Optional, only returned when auxilary losses are activated. It is a list of
                             dictionnaries containing the two above keys for each decoder layer.
         """
+        """
         if targets is None:
             captions = kw["captions"]
         else:
@@ -248,38 +256,48 @@ class GroundingDINO(nn.Module):
         tokenized = self.tokenizer(captions, padding="longest", return_tensors="pt").to(
             samples.device
         )
-        (
-            text_self_attention_masks,
-            position_ids,
-            cate_to_token_mask_list,
-        ) = generate_masks_with_special_tokens_and_transfer_map(
-            tokenized, self.specical_tokens, self.tokenizer
-        )
+        """
+#        tokenized = {
+#            "input_ids": input_ids,
+#            "attention_mask": attention_mask,
+#            "token_type_ids": token_type_ids,
+#        }
 
-        if text_self_attention_masks.shape[1] > self.max_text_len:
-            text_self_attention_masks = text_self_attention_masks[
-                :, : self.max_text_len, : self.max_text_len
-            ]
-            position_ids = position_ids[:, : self.max_text_len]
-            tokenized["input_ids"] = tokenized["input_ids"][:, : self.max_text_len]
-            tokenized["attention_mask"] = tokenized["attention_mask"][:, : self.max_text_len]
-            tokenized["token_type_ids"] = tokenized["token_type_ids"][:, : self.max_text_len]
+#        (
+#            text_self_attention_masks,
+#            position_ids,
+#            cate_to_token_mask_list,
+#        ) = generate_masks_with_special_tokens_and_transfer_map(
+#            tokenized, self.specical_tokens, self.tokenizer
+#        )
 
-        # extract text embeddings
-        if self.sub_sentence_present:
-            tokenized_for_encoder = {k: v for k, v in tokenized.items() if k != "attention_mask"}
-            tokenized_for_encoder["attention_mask"] = text_self_attention_masks
-            tokenized_for_encoder["position_ids"] = position_ids
-        else:
-            # import ipdb; ipdb.set_trace()
-            tokenized_for_encoder = tokenized
+#        if text_self_attention_masks.shape[1] > self.max_text_len:
+#            text_self_attention_masks = text_self_attention_masks[
+#                :, : self.max_text_len, : self.max_text_len
+#            ]
+#            position_ids = position_ids[:, : self.max_text_len]
+#            tokenized["input_ids"] = tokenized["input_ids"][:, : self.max_text_len]
+#            tokenized["attention_mask"] = tokenized["attention_mask"][:, : self.max_text_len]
+#            tokenized["token_type_ids"] = tokenized["token_type_ids"][:, : self.max_text_len]
 
-        bert_output = self.bert(**tokenized_for_encoder)  # bs, 195, 768
+#        # extract text embeddings
+#        if self.sub_sentence_present:
+#            tokenized_for_encoder = {k: v for k, v in tokenized.items() if k != "attention_mask"}
+#            tokenized_for_encoder["attention_mask"] = text_self_attention_masks
+#            tokenized_for_encoder["position_ids"] = position_ids
+#        else:
+#            # import ipdb; ipdb.set_trace()
+#            tokenized_for_encoder = tokenized
 
-        encoded_text = self.feat_map(bert_output["last_hidden_state"])  # bs, 195, d_model
-        text_token_mask = tokenized.attention_mask.bool()  # bs, 195
+#        bert_output = self.bert(**tokenized_for_encoder)  # bs, 195, 768
+
+#        encoded_text = self.feat_map(bert_output["last_hidden_state"])  # bs, 195, d_model
+#        text_token_mask = tokenized["attention_mask"].bool()  # bs, 195
+#        text_token_mask = tokenized.attention_mask.bool()  # bs, 195
         # text_token_mask: True for nomask, False for mask
         # text_self_attention_masks: True for nomask, False for mask
+        encoded_text = self.feat_map(last_hidden_state)  # bs, 195, d_model
+        text_token_mask = attention_mask.bool()  # bs, 195
 
         if encoded_text.shape[1] > self.max_text_len:
             encoded_text = encoded_text[:, : self.max_text_len, :]

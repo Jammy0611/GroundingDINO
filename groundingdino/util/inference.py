@@ -13,6 +13,7 @@ from groundingdino.models import build_model
 from groundingdino.util.misc import clean_state_dict
 from groundingdino.util.slconfig import SLConfig
 from groundingdino.util.utils import get_phrases_from_posmap
+from groundingdino.models.GroundingDINO.bertwarper import generate_masks_with_special_tokens_and_transfer_map
 
 # ----------------------------------------------------------------------------------------------------------------------
 # OLD API
@@ -64,8 +65,44 @@ def predict(
     model = model.to(device)
     image = image.to(device)
 
+    tokenizer = model.tokenizer
+    tokenized = tokenizer([caption], padding="longest", return_tensors="pt").to(
+        device
+    )
+
+    specical_tokens = model.specical_tokens
+    (
+        text_self_attention_masks,
+        position_ids,
+        _,
+    ) = generate_masks_with_special_tokens_and_transfer_map(
+        tokenized, specical_tokens, tokenizer
+    )
+
+    max_text_len = model.max_text_len
+    if text_self_attention_masks.shape[1] > max_text_len:
+        text_self_attention_masks = text_self_attention_masks[
+            :, : max_text_len, : max_text_len
+        ]
+        position_ids = position_ids[:, : max_text_len]
+        tokenized["input_ids"] = tokenized["input_ids"][:, : max_text_len]
+        tokenized["attention_mask"] = tokenized["attention_mask"][:, : max_text_len]
+        tokenized["token_type_ids"] = tokenized["token_type_ids"][:, : max_text_len]
+
+    tokenized_for_encoder = {k: v for k, v in tokenized.items() if k != "attention_mask"}
+    tokenized_for_encoder["attention_mask"] = text_self_attention_masks
+    tokenized_for_encoder["position_ids"] = position_ids
+
+    bert = model.bert
+    bert_output = bert(**tokenized_for_encoder)  # bs, 195, 768
+
     with torch.no_grad():
-        outputs = model(image[None], captions=[caption])
+        outputs = model(image.unsqueeze(0), 
+                        last_hidden_state=bert_output["last_hidden_state"], 
+                        attention_mask=tokenized["attention_mask"], 
+                        position_ids = position_ids, 
+                        text_self_attention_masks = text_self_attention_masks)
+#        outputs = model(image[None], captions=[caption])
 
     prediction_logits = outputs["pred_logits"].cpu().sigmoid()[0]  # prediction_logits.shape = (nq, 256)
     prediction_boxes = outputs["pred_boxes"].cpu()[0]  # prediction_boxes.shape = (nq, 4)
@@ -74,7 +111,7 @@ def predict(
     logits = prediction_logits[mask]  # logits.shape = (n, 256)
     boxes = prediction_boxes[mask]  # boxes.shape = (n, 4)
 
-    tokenizer = model.tokenizer
+#    tokenizer = model.tokenizer
     tokenized = tokenizer(caption)
     
     if remove_combined:
