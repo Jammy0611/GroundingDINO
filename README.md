@@ -248,6 +248,15 @@ cv2.imwrite("annotated_image.jpg", annotated_frame)
 
 We also provide a demo code to integrate Grounding DINO with Gradio Web UI. See the file `demo/gradio_app.py` for more details.
 
+**Running Web UI with Docker**
+
+To run the web UI using Docker, first build and run the container:
+
+```bash
+docker build -t grounding_dino .
+docker run --gpus all --network host -it grounding_dino
+```
+
 **Notebooks**
 
 - We release [demos](demo/image_editing_with_groundingdino_gligen.ipynb) to combine [Grounding DINO](https://arxiv.org/abs/2303.05499) with [GLIGEN](https://github.com/gligen/GLIGEN)  for more controllable image editings.
