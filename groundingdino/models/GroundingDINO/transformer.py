@@ -470,6 +470,7 @@ class TransformerEncoder(nn.Module):
             ref_y, ref_x = torch.meshgrid(
                 torch.linspace(0.5, H_ - 0.5, H_, dtype=torch.float32, device=device),
                 torch.linspace(0.5, W_ - 0.5, W_, dtype=torch.float32, device=device),
+                indexing="ij",
             )
             ref_y = ref_y.reshape(-1)[None] / (valid_ratios[:, None, lvl, 1] * H_)
             ref_x = ref_x.reshape(-1)[None] / (valid_ratios[:, None, lvl, 0] * W_)
@@ -554,6 +555,7 @@ class TransformerEncoder(nn.Module):
                         memory_text,
                         key_padding_mask,
                         text_attention_mask,
+                        use_reentrant=True,
                     )
                 else:
                     output, memory_text = self.fusion_layers[layer_id](
@@ -581,6 +583,7 @@ class TransformerEncoder(nn.Module):
                     spatial_shapes,
                     level_start_index,
                     key_padding_mask,
+                    use_reentrant=True,
                 )
             else:
                 output = layer(
@@ -859,7 +862,7 @@ class DeformableTransformerDecoderLayer(nn.Module):
         return tensor if pos is None else tensor + pos
 
     def forward_ffn(self, tgt):
-        with torch.cuda.amp.autocast(enabled=False):
+        with torch.amp.autocast(device_type='cuda', dtype=torch.float16, enabled=False, cache_enabled=True):
             tgt2 = self.linear2(self.dropout3(self.activation(self.linear1(tgt))))
         tgt = tgt + self.dropout4(tgt2)
         tgt = self.norm3(tgt)
